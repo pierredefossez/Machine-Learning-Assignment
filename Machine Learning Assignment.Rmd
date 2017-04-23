@@ -1,0 +1,113 @@
+---
+title: "Machine Learning Assignment"
+author: "PA Defossez"
+date: "22 avril 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE, cache=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Description
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#Getting the data
+
+```{r, cache=TRUE, warning=F}
+
+#download files, fill empty boxes with NA, read files
+library(caret)
+library(dplyr)
+
+trainingUrl<- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+training <- read.csv(url(trainingUrl), na.strings=c("NA","#DIV/0!",""))
+
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+        
+```
+
+#Cleaning the data
+```{r, cache=TRUE, warning=F}
+#step 1 remove near-zero variance variables
+
+nzv <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[,nzv$nzv==FALSE]
+
+
+#step 2 remove variables that contain >70% NA values
+training_short <- training
+for(i in 1:length(training)) {
+        if( sum( is.na(training[, i] ) ) /nrow(training) >= .7) {
+                for(j in 1:length(training_short)) {
+                        if( length( grep(names(training[i]), names(training_short)[j]) ) == 1)  {
+                                training_short <- training_short[ , -j]
+                        }   
+                } 
+        }
+}
+
+training <- training_short
+
+#step3 remove columns 1-6 (case number, name, time stamps, window number) 
+#they are not relevant to the analysis and could disturb things
+training <- select(training, 7:59)
+
+```
+
+
+#Partitioning the data
+```{r, cache=TRUE, warning=F}
+set.seed(123)
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=F)
+trainSet <- training[inTrain, ]
+validSet <- training[-inTrain, ]
+
+#remove classe from validation sets so it does not affect prediction
+validSet2 <- validSet[,-53]
+```
+
+#Fit a first model: decision tree, test accuracy
+```{r, cache=TRUE, warning=F, message=F}
+ModRPART <- train(classe~., data=trainSet, method="rpart")
+
+PredRPART <- predict(ModRPART, newdata=validSet2)
+
+confusionMatrix(PredRPART, validSet$classe)
+
+```
+
+###The out of sample accuracy is only 55%
+
+
+#Fit a second model: Linear Discriminant Analysis, test accuracy
+```{r, cache=TRUE, warning=F, message=F}
+ModLDA <- train(classe~., data=trainSet, method="lda")
+
+PredLDA <- predict(ModLDA, newdata=validSet2)
+
+confusionMatrix(PredLDA, validSet$classe)
+```
+
+###The out of sample accuracy is now 70%
+
+#Fit a third model: Boosting, test accuracy
+```{r, cache=TRUE, warning=F, message=F}
+ModGBM <- train(classe~., data=trainSet, method="gbm", verbose=F)
+PredGBM <- predict(ModGBM, newdata=validSet2)
+
+confusionMatrix(PredGBM, validSet$classe)
+
+```
+
+###The computing time was much longer, but the out of sample accuracy is now 96%
+
+#Apply the best performing model, GBM, to the test set and return answers
+```{r, cache=TRUE, warning=F, message=F}
+PredGBMfinal <- predict(ModGBM, newdata=test)
+PredGBMfinal
+```
+
+
+
